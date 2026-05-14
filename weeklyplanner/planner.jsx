@@ -34,7 +34,11 @@
  *   3. Paste this code into it
  *   4. In your Render note, set ~renderNote → this JSX note
  *   5. A text note labeled #plannerdata must exist (stores state)
- *      Optional label: #backlogWidth=320  (default backlog column width)
+ *      Optional labels:
+ *        #backlogWidth=320      default backlog column width (px)
+ *        #scanArchived=false    skip archived notes (default: true)
+ *        #weekplanner_todo=#ed7a2a   override kind color (also for
+ *        #weekplanner_idea, #weekplanner_check, #weekplanner_toread)
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "trilium:preact";
@@ -140,7 +144,7 @@ function parseTaskMeta(rawText) {
 async function loadPlannerData() {
     return await runOnBackend(() => {
         const note = api.getNoteWithLabel('plannerdata');
-        if (!note) return { data: {}, labelWidth: null, colorOverrides: {} };
+        if (!note) return { data: {}, labelWidth: null, colorOverrides: {}, scanArchived: true };
 
         // #backlogWidth label → number of pixels
         let labelWidth = null;
@@ -148,6 +152,13 @@ async function loadPlannerData() {
         if (widthLabel) {
             const n = parseInt(widthLabel, 10);
             if (!isNaN(n) && n > 0) labelWidth = n;
+        }
+
+        // #scanArchived label → false to skip archived notes, otherwise scan them
+        let scanArchived = true;
+        const scanLabel = note.getLabelValue && note.getLabelValue('scanArchived');
+        if (scanLabel != null && /^(false|no|0|off)$/i.test(String(scanLabel).trim())) {
+            scanArchived = false;
         }
 
         // Per-kind color overrides via labels:
@@ -173,7 +184,7 @@ async function loadPlannerData() {
             if (raw) data = JSON.parse(raw);
         } catch (_) { /* corrupt JSON → start fresh */ }
 
-        return { data, labelWidth, colorOverrides };
+        return { data, labelWidth, colorOverrides, scanArchived };
     });
 }
 
@@ -187,25 +198,30 @@ async function savePlannerData(plannerData) {
     }, [data]);
 }
 
-/* Scan all text notes for prefixed lines. */
-async function fetchAllTasks() {
+/* Build the GLOB filter for the SQL prefilter.
+   Case-sensitive (matches the case-sensitive prefix rule).
+   Returns: "b.content GLOB '*TODO *' OR b.content GLOB '*IDEA *' OR ..." */
+function buildPrefixGlobClause() {
+    return KIND_KEYS.map(k => `b.content GLOB '*${k} *'`).join(' OR ');
+}
+
+/* Scan all text notes for prefixed lines.
+   Uses a SQL prefilter against the `blobs` table so notes containing no
+   prefix are excluded before any JavaScript scanning. Falls back to a
+   plain SELECT against `notes` if the JOIN form fails (older Trilium
+   versions that store content differently).
+   If `scanArchived` is false, notes that Trilium considers archived
+   (either via a direct #archived label or one inherited from an ancestor)
+   are skipped. */
+async function fetchAllTasks({ scanArchived = true } = {}) {
     const kindRe = KIND_RE_SOURCE;
+    const prefixClause = buildPrefixGlobClause();
 
-    const groups = await runOnBackend((kindReSource) => {
-        const rows = api.sql.getRows(`
-            SELECT noteId, title
-            FROM notes
-            WHERE isDeleted = 0 AND type = 'text'
-            ORDER BY title COLLATE NOCASE
-        `);
-
+    const groups = await runOnBackend((kindReSource, includeArchived, prefixGlobClause) => {
         const findRe = new RegExp(
             `(^|>|<br\\s*/?>)\\s*(${kindReSource})\\s+([\\s\\S]*?)(?=</(?:p|li|div|h[1-6])>|<br\\s*/?>|$)`,
             'g'
         );
-        // Cheap pre-reject so we don't scan notes that contain no prefix at all
-        const anyPrefixRe = new RegExp(`\\b${kindReSource}\\s`);
-
         const cleanText = s => s
             .replace(/<[^>]+>/g, '')
             .replace(/&nbsp;/g,  ' ')
@@ -217,16 +233,9 @@ async function fetchAllTasks() {
             .replace(/\s+/g,     ' ')
             .trim();
 
-        const result = [];
-
-        for (const row of rows) {
-            const note = api.getNote(row.noteId);
-            if (!note) continue;
-            const content = note.getContent();
-            if (!content || !anyPrefixRe.test(content)) continue;
-
+        function scanContent(content) {
             const tasks = [];
-            const indexByKind = {};   // kind → running count
+            const indexByKind = {};
             let m;
             findRe.lastIndex = 0;
             while ((m = findRe.exec(content)) !== null) {
@@ -236,20 +245,97 @@ async function fetchAllTasks() {
                 if (!text) continue;
                 tasks.push({ kind, text, indexForKind: idxForKind });
             }
-
-            if (tasks.length) {
-                result.push({
-                    noteId: row.noteId,
-                    title:  row.title || '(no title)',
-                    tasks,
-                });
-            }
+            return tasks;
         }
 
-        return result;
-    }, [kindRe]);
+        // Fast path: SQL prefilter via JOIN on blobs.
+        // Returns only notes whose content matches at least one prefix.
+        let rows;
+        try {
+            rows = api.sql.getRows(
+                "SELECT n.noteId, n.title FROM notes n " +
+                "JOIN blobs b ON b.blobId = n.blobId " +
+                "WHERE n.isDeleted = 0 AND n.isProtected = 0 AND n.type = 'text' AND (" + prefixGlobClause + ") " +
+                "ORDER BY n.title COLLATE NOCASE"
+            );
+        } catch (err) {
+            // Fallback for unexpected schema differences: plain SELECT,
+            // the in-JS scanner will reject prefix-less notes by itself.
+            rows = api.sql.getRows(
+                "SELECT noteId, title FROM notes " +
+                "WHERE isDeleted = 0 AND isProtected = 0 AND type = 'text' " +
+                "ORDER BY title COLLATE NOCASE"
+            );
+        }
 
-    // Flatten + parse metadata (tags, @date)
+        const result = [];
+        for (const row of rows) {
+            const note = api.getNote(row.noteId);
+            if (!note) continue;
+            if (!includeArchived && note.hasLabel && note.hasLabel('archived')) continue;
+            const content = note.getContent();
+            if (!content) continue;
+            const tasks = scanContent(content);
+            if (tasks.length) {
+                result.push({ noteId: row.noteId, title: row.title || '(no title)', tasks });
+            }
+        }
+        return result;
+    }, [kindRe, scanArchived, prefixClause]);
+
+    return flattenGroups(groups);
+}
+
+/* Re-scan a single note. Returns a (possibly empty) array of tasks
+   in the same shape as fetchAllTasks. Used after mark-done and capture
+   to avoid a full database scan when we know which note changed. */
+async function fetchTasksForNote(noteId, { scanArchived = true } = {}) {
+    const kindRe = KIND_RE_SOURCE;
+
+    const groups = await runOnBackend((kindReSource, includeArchived, targetNoteId) => {
+        const findRe = new RegExp(
+            `(^|>|<br\\s*/?>)\\s*(${kindReSource})\\s+([\\s\\S]*?)(?=</(?:p|li|div|h[1-6])>|<br\\s*/?>|$)`,
+            'g'
+        );
+        const cleanText = s => s
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g,  ' ')
+            .replace(/&amp;/g,   '&')
+            .replace(/&lt;/g,    '<')
+            .replace(/&gt;/g,    '>')
+            .replace(/&quot;/g,  '"')
+            .replace(/&#39;/g,   "'")
+            .replace(/\s+/g,     ' ')
+            .trim();
+
+        const note = api.getNote(targetNoteId);
+        if (!note) return [];
+        if (note.isDeleted || note.isProtected || note.type !== 'text') return [];
+        if (!includeArchived && note.hasLabel && note.hasLabel('archived')) return [];
+        const content = note.getContent();
+        if (!content) return [];
+
+        const tasks = [];
+        const indexByKind = {};
+        let m;
+        findRe.lastIndex = 0;
+        while ((m = findRe.exec(content)) !== null) {
+            const kind = m[2];
+            const text = cleanText(m[3]);
+            const idxForKind = (indexByKind[kind] = (indexByKind[kind] || 0) + 1) - 1;
+            if (!text) continue;
+            tasks.push({ kind, text, indexForKind: idxForKind });
+        }
+        if (!tasks.length) return [];
+        return [{ noteId: note.noteId, title: note.title || '(no title)', tasks }];
+    }, [kindRe, scanArchived, noteId]);
+
+    return flattenGroups(groups);
+}
+
+/* Flatten {noteId, title, tasks:[...]} groups into the array shape used by
+   the UI: { id, kind, text, tags, isoDate, indexForKind, noteId, noteTitle }. */
+function flattenGroups(groups) {
     const all = [];
     for (const g of groups) {
         for (const t of g.tasks) {
@@ -822,6 +908,7 @@ function PlannerApp() {
     const [error,       setError]         = useState(null);
     const [capturing,   setCapturing]     = useState(false);
     const [colorOverrides, setColorOverrides] = useState({});
+    const [scanArchived, setScanArchived] = useState(true);
 
     // Filters: persisted in plannerData._filters as { kinds: [], tags: [] }
     const [filters, setFilters] = useState({ kinds: new Set(), tags: new Set() });
@@ -870,9 +957,10 @@ function PlannerApp() {
                     setBacklogWidth(loaded.labelWidth);
                 }
                 if (loaded.colorOverrides) setColorOverrides(loaded.colorOverrides);
+                setScanArchived(loaded.scanArchived !== false);
 
                 // Fetch tasks, apply @date auto-scheduling, then set both at once
-                const tasks = await fetchAllTasks();
+                const tasks = await fetchAllTasks({ scanArchived: loaded.scanArchived !== false });
                 setAllTasks(tasks);
                 setPlannerData(applyDateSuffixes(tasks, data));
             } catch (err) {
@@ -905,21 +993,39 @@ function PlannerApp() {
         }));
     }, [filters]);
 
-    /* Reload tasks — used after capture and after mark-done.
-       Crucially: this re-fetch is what keeps per-kind indices fresh,
-       so clicking the *next* item after a mark-done opens the correct task. */
+    /* Full reload — used by the ⟳ button. Slower but covers every case
+       (note deleted, kind changed, multiple notes edited). */
     const reload = useCallback(async () => {
         try {
-            const tasks = await fetchAllTasks();
+            const tasks = await fetchAllTasks({ scanArchived });
             setAllTasks(tasks);
             setPlannerData(prev => applyDateSuffixes(tasks, prev));
         } catch (err) {
             console.error('reload:', err);
             setError(String(err.message || err));
         }
-    }, [applyDateSuffixes]);
+    }, [applyDateSuffixes, scanArchived]);
 
-    /* Mark done: optimistic UI (remove immediately) + re-fetch (correct indices) */
+    /* Single-note reload — used after mark-done and capture, when we know
+       exactly which note changed. Avoids a full database scan.
+       Replaces all tasks belonging to that note with the freshly-scanned ones,
+       which is what keeps per-kind indices accurate after a mark-done. */
+    const reloadNote = useCallback(async (noteId) => {
+        try {
+            const fresh = await fetchTasksForNote(noteId, { scanArchived });
+            setAllTasks(prev => {
+                const others = prev.filter(t => t.noteId !== noteId);
+                return [...others, ...fresh];
+            });
+            setPlannerData(prev => applyDateSuffixes(fresh, prev));
+        } catch (err) {
+            console.error('reloadNote:', err);
+            // Fall back to a full reload on error
+            await reload();
+        }
+    }, [applyDateSuffixes, scanArchived, reload]);
+
+    /* Mark done: optimistic UI (remove immediately) + per-note re-fetch (correct indices) */
     const markDone = useCallback(async (task) => {
         // Optimistic: remove from local state
         setAllTasks(prev => prev.filter(t => t.id !== task.id));
@@ -938,27 +1044,32 @@ function PlannerApp() {
 
         try {
             await markTaskDone(task);
-            // Re-fetch to correct indices for the *remaining* tasks
-            await reload();
+            // Re-scan only the source note to refresh its task indices.
+            await reloadNote(task.noteId);
         } catch (err) {
             console.error('markDone:', err);
             alert(`Mark done failed: ${err.message || err}`);
             await reload();
         }
-    }, [reload]);
+    }, [reload, reloadNote]);
 
     const capture = useCallback(async (rawText) => {
         setCapturing(true);
         try {
-            await appendTodoToToday(rawText);
-            await reload();
+            const dailyNote = await appendTodoToToday(rawText);
+            // Re-scan only today's daily note for the newly-added task.
+            if (dailyNote && dailyNote.noteId) {
+                await reloadNote(dailyNote.noteId);
+            } else {
+                await reload();   // shouldn't happen, but fall back
+            }
         } catch (err) {
             console.error('capture:', err);
             alert(`Capture failed: ${err.message || err}`);
         } finally {
             setCapturing(false);
         }
-    }, [reload]);
+    }, [reload, reloadNote]);
 
     /* Drag */
     const onCardDragStart = useCallback((task, e) => {
