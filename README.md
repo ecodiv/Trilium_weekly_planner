@@ -12,7 +12,7 @@ The planner supports four task types: `TODO`, `IDEA`, `CHECK`, and `TOREAD`. You
 
 _Figure 1. Overview: the planner with Backlog and seven day columns. It is full-width on the desktop. On mobile (window narrower than 700px), all columns are fixed-width and the board scroll_
 
-This tool is inspired by the [weekly planner](https://github.com/orgs/TriliumNext/discussions/9676) tool by [ricolandia](https://github.com/ricolandia), which in turn was inspired by the [Task-hub tool](https://github.com/ZangXincz/TriliumNext-Task-Hub) by [ZangXincz](https://github.com/ZangXincz). The tool was created with extensive use of AI. It was tested on TriliumNext 0.102.0 and 0.103.0.
+This tool builds on the [weekly planner](https://github.com/orgs/TriliumNext/discussions/9676) tool by [ricolandia](https://github.com/ricolandia), adopting the important principles, but with some tweaks to accomodate specific needs. The weekly planner in turn was inspired by the [Task-hub tool](https://github.com/ZangXincz/TriliumNext-Task-Hub) by [ZangXincz](https://github.com/ZangXincz). The tool was created with extensive use of AI. It was tested on TriliumNext 0.102.0 and 0.103.0.
 
 ## Requirements
 
