@@ -1,6 +1,5 @@
 # Trilium_weekly_planner
-Weekly planner script for use in Trilium
-# Manual weekly planner
+
 ## Task Planner for TriliumNext
 
 Task Planner is a weekly planner for TriliumNext. It finds task lines written directly inside your notes and shows them on a planning board.
