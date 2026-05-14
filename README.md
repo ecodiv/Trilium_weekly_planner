@@ -2,7 +2,7 @@
 
 ## What is it
 
-Task Planner is a weekly planner for TriliumNext. It finds task lines written directly inside your notes and shows them on a planning board.
+Task Planner is a weekly planner for [Trilium Notes](https://triliumnotes.org/), the powerfull and flexible app for note-taking and organizing a personal knowledge base. It finds task lines written directly inside your notes and shows them on a planning board.
 
 Type `TODO buy milk` anywhere in a daily note, meeting note, or project note. The task appears in the planner. Drag it to a day column to schedule it. Mark it done from the planner, and the original source line is greyed out in place.
 
@@ -211,6 +211,7 @@ You do not normally need to edit this note. The main exception is when you want 
 | `#weekplanner_idea=<colour>` | Overrides the `IDEA` chip colour. Default: blue. |
 | `#weekplanner_check=<colour>` | Overrides the `CHECK` chip colour. Default: green. |
 | `#weekplanner_toread=<colour>` | Overrides the `TOREAD` chip colour. Default: purple. |
+| `#scanArchived=false/true` | Archived notes are scanned. Override if they should not |
 
 The user can also set the Backlog width interactively by dragging the right edge of the Backlog column. The dragged value is saved into the `#plannerdata` JSON and takes precedence over `#backlogWidth` until the saved value is cleared.
 
