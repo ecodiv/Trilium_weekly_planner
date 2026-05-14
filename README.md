@@ -211,6 +211,7 @@ You do not normally need to edit this note. The main exception is when you want 
 | `#weekplanner_idea=<colour>` | Overrides the `IDEA` chip colour. Default: blue. |
 | `#weekplanner_check=<colour>` | Overrides the `CHECK` chip colour. Default: green. |
 | `#weekplanner_toread=<colour>` | Overrides the `TOREAD` chip colour. Default: purple. |
+| `#scanArchived=false/true` | Archived notes are scanned. Override if they should not |
 
 The user can also set the Backlog width interactively by dragging the right edge of the Backlog column. The dragged value is saved into the `#plannerdata` JSON and takes precedence over `#backlogWidth` until the saved value is cleared.
 
