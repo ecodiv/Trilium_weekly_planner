@@ -33,7 +33,6 @@ To set up the weekly planner, download `WeeklyPlanner.zip` and import it into Tr
 
 1.  `planner.jsx`, the code that runs the planner
 2.  `planner_data.json`, the state note
-3.  `planner_manual.html`, this manual
 
 For better organisation, you may want to import everything inside a parent note such as `Tools`, `Plugins`, or `Addons`.
 
