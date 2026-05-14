@@ -8,7 +8,7 @@ Type `TODO buy milk` anywhere in a daily note, meeting note, or project note. Th
 
 The planner supports four task types: `TODO`, `IDEA`, `CHECK`, and `TOREAD`. You can schedule tasks by dragging them, or by adding date tokens such as `@today`, `@tomorrow`, `@fri`, or `@2026-05-20`.
 
-<img src="images/Manual weekly planner_Scre.png" width="1480" height="468">
+<img src="images/1_Manual weekly planner_figu.png" width="1480" height="468">
 
 _Figure 1. Overview: the planner with Backlog and seven day columns. It is full-width on the desktop. On mobile (window narrower than 700px), all columns are fixed-width and the board scroll_
 
