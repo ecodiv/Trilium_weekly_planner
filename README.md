@@ -1,20 +1,56 @@
 # Trilium weekly task planner
 
+<!--ts-->
+## Table of Contents
+
+* [What is it](#what-is-it)
+* [Get it to work](#get-it-to-work)
+  * [Requirements](#requirements)
+  * [Setup](#setup)
+  * [First test](#first-test)
+* [Using it](#using-it)
+  * [Daily flow](#daily-flow)
+  * [How tasks work](#how-tasks-work)
+  * [The day card](#the-day-card)
+  * [Scheduling by drag & drop](#scheduling-by-drag-drop)
+  * [Backlog](#backlog)
+  * [Scheduling by @date](#scheduling-by-date)
+  * [Quick capture](#quick-capture)
+  * [Tags](#tags)
+  * [Filtering](#filtering)
+  * [Header controls](#header-controls)
+* [Configuration](#configuration)
+  * [Available settings](#available-settings)
+  * [Data safety](#data-safety)
+  * [State note](#state-note)
+  * [Recovery](#recovery)
+* [Trouble shooting](#trouble-shooting)
+  * [Symptom: Initialization error or planner stuck on Loading...](#symptom-initialization-error-or-planner-stuck-on-loading)
+  * [Symptom: planner loads but tasks are not in the right days](#symptom-planner-loads-but-tasks-are-not-in-the-right-days)
+  * [Symptom: colour override setting has no effect](#symptom-colour-override-setting-has-no-effect)
+  * [Symptom: archived notes appear but you want to exclude them](#symptom-archived-notes-appear-but-you-want-to-exclude-them)
+  * [Ultimate option](#ultimate-option)
+* [Limitations](#limitations)
+
+<!--te-->
+
 ## What is it
 
 Task Planner is a weekly planner for [Trilium Notes](https://triliumnotes.org/), the powerfull and flexible app for note-taking and organizing a personal knowledge base. It finds task lines written directly inside your notes and shows them on a planning board.
 
-Type `TODO buy milk` anywhere in a daily note, meeting note, or project note. The task appears in the planner. Drag it to a day column to schedule it. Mark it done from the planner, and the original source line is greyed out in place.
+Type e.g., `TODO buy milk` anywhere in a daily note, meeting note, or project note. The task appears in the planner. Drag it to a day column to schedule it. Mark it done from the planner, and the original source line is greyed out in place.
 
 The planner supports four task types: `TODO`, `IDEA`, `CHECK`, and `TOREAD`. You can schedule tasks by dragging them, or by adding date tokens such as `@today`, `@tomorrow`, `@fri`, or `@2026-05-20`.
 
-<img src="images/1_Manual weekly planner_figu.png" width="1480" height="468">
+![](images/overview.png)
 
 _Figure 1. Overview: the planner with Backlog and seven day columns. It is full-width on the desktop. On mobile (window narrower than 700px), all columns are fixed-width and the board scroll_
 
-This tool builds on the [weekly planner](https://github.com/orgs/TriliumNext/discussions/9676) tool by [ricolandia](https://github.com/ricolandia), adopting the important principles, but with some tweaks to accomodate specific needs. The weekly planner in turn was inspired by the [Task-hub tool](https://github.com/ZangXincz/TriliumNext-Task-Hub) by [ZangXincz](https://github.com/ZangXincz). The tool was created with extensive use of AI. It was tested on TriliumNext 0.102.0 and 0.103.0.
+This tool builds on the [weekly planner](https://github.com/orgs/TriliumNext/discussions/9676) tool by [ricolandia](https://github.com/ricolandia), adopting the main principles, but with some tweaks to accomodate specific needs. The weekly planner in turn was inspired by the [Task-hub tool](https://github.com/ZangXincz/TriliumNext-Task-Hub) by [ZangXincz](https://github.com/ZangXincz). The tool was created with use of AI, and tested on Linux and Windows with TriliumNext 0.102.0 and 0.103.0.
 
-## Requirements
+## Get it to work
+
+### Requirements
 
 The planner expects:
 
@@ -22,9 +58,9 @@ The planner expects:
 2.  one JSON note labelled `#plannerdata`
 3.  one Render note with `~renderNote` pointing to the JSX note
 
-The planner scans all text notes in the whole Trilium database. Archived notes are scanned by default as well. You can change this behaviour in the settings section of the JSON file by setting `#scanArchived=false`.
+The planner scans all text notes in the whole Trilium database. Archived notes are scanned by default as well. You can change this behaviour by adding the label `#wp_scan_archived=false` to the `#plannerdata` note. After adding the note, do `F5` or `Ctrl-Shift-R` to refresh the screen.
 
-## Setup
+### Setup
 
 The weekly planner is a **Render Note** that runs inside Trilium as a regular note view. Its state and configuration are stored in a small JSON note that you create once. The underlying code is stored in a JSX note.
 
@@ -44,7 +80,7 @@ After importing:
 5.  Add a relation `~renderNote` from the Render note to the imported `planner.jsx` note.
 6.  Open the Render note to run the planner.
 
-## First test
+### First test
 
 After setup, try this small test:
 
@@ -57,7 +93,9 @@ After setup, try this small test:
 
 This confirms that scanning, scheduling, saving, and completion all work.
 
-## Daily flow
+## Using it
+
+### Daily flow
 
 One way to use the weekly planner:
 
@@ -68,7 +106,7 @@ One way to use the weekly planner:
 5.  **Click a card** when you want to work on the task. The side panel opens the source note alongside the planner, so you can update it in context.
 6.  **At the end of the week**, click `↺` if the current week's plan was speculative and you want a clean slate. Unplanned tasks stay in Backlog.
 
-## How tasks work
+### How tasks work
 
 The planner scans every text note in the whole Trilium database for lines that start with one of four prefixes:
 
@@ -81,44 +119,39 @@ The planner scans every text note in the whole Trilium database for lines that s
 
 Prefixes are case-sensitive and must be followed by a space. They must appear at the start of a paragraph, at the start of a list item, or after a `<br>`. Anything else, such as `My TODO list:` in prose, is ignored.
 
-Archived notes are included in the scan by default. To exclude archived notes, add the tag `#scanArchived=false` as attribute of the weekplanner note.
+Archived notes are included in the scan by default. To exclude archived notes, add the label `#wp_scan_archived=false` to the `#plannerdata` note.
 
-> [!IMPORTANT]
-> A task's planned day is linked to its generated task ID. Editing the first 48 characters of a task can make the planner treat it as a new task, so the planned day may be lost.
+> [!WARNING] A task's planned day is linked to its generated task ID. Editing the first 48 characters of a task can make the planner treat it as a new task, so the planned day may be lost.
 
 ### The day card
 
 Each task is rendered as a small card showing the kind chip in its colour, the task text, the `@date` suffix in light grey if one exists, any `#tags` as grey pills, and the source note title below.
 
-<img src="images/Manual weekly planner_figu.png" width="384" height="221">
+![](images/day_card.png)
 
 _Figure 2: Task cards with ✓ button visible on hover, kind chip, date suffix and tag pil_
 
-The `✓` button in the top-right corner is the mark-done action. On desktop it appears on hover. On touch devices it is always visible.
+The `✓` button in the top-right corner is the mark-done action. On desktop it appears on hover. On touch devices it is always visible. Clicking it removes the task from the planner. The line stays in your source note, greyed out, as a record of completion. 
 
-### Marking done
+> [!NOTE] Done items are not cleaned up automatically. Delete them manually when you want a tidy source note.
 
-Clicking `✓` removes the task from the planner. The line stays in your source note, greyed out, as a record of completion. No task text is moved into the planner state file, and no source text is deleted.
+Clicking anywhere else on the card opens the source note. The default action opens it in a **side panel** alongside your current view. To open the source note as a new tab, use `Ctrl-click`, `Cmd-click` or `middle-click`.
 
-Done items are not cleaned up automatically. Delete them manually when you want a tidy source note.
+### Scheduling by drag & drop
 
-### Opening the source note
-
-Clicking anywhere else on the card opens the source note. The default action opens it in a **side panel** alongside your current view.
-
-To open the source note as a new tab, use `Ctrl-click` or `Cmd-click`. You can also middle-click the card to open the source note in a new tab.o 
-
-## Scheduling
-
-### By drag on desktop
-
-Drag a card between Backlog and any day column. A blue line shows where the card will land. Drop position is preserved within a day. The planner remembers card order per day, not just which day a task belongs to.
-
-### On mobile
+On the desktop, drag a card between Backlog and any day column. A blue line shows where the card will land. Drop position is preserved within a day. The planner remembers card order per day, not just which day a task belongs to.
 
 On mobile, tapping a card opens the source note. Scheduling by drag is supported, but can be fiddly on small screens. For mobile use, the most reliable method is to add an `@date` suffix such as `@today`, `@fri`, or `@2026-05-20`.
 
-### By `@date` suffix
+### Backlog
+
+Tasks without a planned date live in the Backlog column. Drag a task from a day column back to Backlog to unschedule it. Clearing all planning for the currently visible week will also return scheduled tasks to the backlog column.
+
+![](images/clear_week.svg)
+
+_Figure 3. Clear the selected week_
+
+### Scheduling by @date
 
 Append `@date` anywhere in the task text to auto-schedule:
 
@@ -131,23 +164,13 @@ TOREAD Hofstadter essay @sat
 
 Recognised tokens are `@today`, `@tomorrow`, `@mon` through `@sun`, and any ISO date in the form `@YYYY-MM-DD`. Unrecognised tokens stay in the text and do not schedule the task.
 
-### Backlog
+### Quick capture
 
-Tasks without a planned date live in the Backlog column. Drag a task from a day column back to Backlog to unschedule it.
-
-## Quick capture
-
-The input bar above the board appends a new task to **today's daily note**, creating that note if it does not exist. By default the kind is `TODO`, but if you type a known prefix, that prefix is respected:
-
-```
-TODO send invoice           TODO assumed
-TOREAD Hofstadter @sat      purple card, lands on Saturday
-IDEA pricing model #work    blue card, tagged #work
-```
+The input bar above the board appends a new task to **today's daily note**, creating that note if it does not exist. By default the kind is `TODO`, but if you type a known prefix, that prefix is respected.
 
 Press Enter or click the `add` button to save the card. The board reloads automatically, and `@date` suffixes are applied immediately.
 
-## Tags
+### Tags
 
 Add `#tag-name` anywhere in a task text to tag it:
 
@@ -158,13 +181,13 @@ TODO deploy staging #work #urgent
 
 Tags display as small grey pills on the card and feed the filter dropdown. Tags must start with a letter and can include letters, digits, underscores, and hyphens. Tags stay in the source note and do not move.
 
-## Filtering
+### Filtering
 
 You can filter the tasks on the type of task and on their tags. 
 
-<img src="images/2_Manual weekly planner_figu.png" width="224" height="268">
+![](images/filter.png)
 
-Figure 3. Filter dropdown showing kind checkboxes and tag list.
+_Figure 3. Filter dropdown showing kind checkboxes and tag list._
 
 Click the **Filter** button in the top-right of the planner header. The dropdown shows:
 
@@ -177,15 +200,13 @@ If no kinds are selected, all kinds show. If no tags are selected, tag filtering
 
 Filters persist across reloads and are stored in the `#plannerdata` JSON.
 
-## Header controls
+### Header controls
 
 From left to right:
 
 | Control | Action |
 | --- | --- |
-| **Planner** | Title |
 | **‹** | Previous week |
-| **date range** | Currently shown week |
 | **›** | Next week |
 | **today** | Jump to the current week. Only visible when you are not already viewing the current week. |
 | **N/M planned** | N tasks scheduled this week out of M total tasks |
@@ -193,37 +214,43 @@ From left to right:
 | **↺** | Clear all planning for the currently visible week. The planner asks for confirmation first. |
 | **⟳** | Re-scan all notes for tasks |
 
-The reload button is useful after you have edited tasks in source notes. The planner does not watch for source-note changes in real time.
+Use the reload button after you have edited tasks in source notes to get those into the weekly planner (this does not happen automatically)
 
 ## Configuration
 
 The weekly planner uses the `planner_data.json` note to store which tasks are scheduled to which days, the order of cards within a day, the backlog width, and your active filters.
 
-You do not normally need to edit this note. The main exception is when you want to change one of the available settings. You can find these options under the `CONSTANTS` header in the JSON file. After changing a setting, refresh the planner with `Shift + Ctrl + R`, the `⟳` button, or a page reload.
+You do not normally need to edit this note's content. To change a setting, edit the **attributes (labels)** of the `#plannerdata` note. After changing a label, refresh the planner with `Shift + Ctrl + R`, the `⟳` button, or a page reload.
 
 ### Available settings
 
+All settings are labels you add to the `#plannerdata` note. They all share the `wp_` prefix to keep them grouped in the attributes pane.
+
 | Setting | Description |
 | --- | --- |
-| `#scanArchived=false` | Excludes archived notes from the scan. By default, archived notes are scanned. |
-| `#backlogWidth=<pixels>` | Sets the default width of the Backlog column on desktop. Example: `#backlogWidth=320`. Range: 150 to 600. Without this setting, the default is 260px. |
-| `#weekplanner_todo=<colour>` | Overrides the `TODO` chip colour. Accepts any CSS colour, such as `#ed7a2a`, `red`, `rgb(120,60,200)`, or `hsl(20 80% 60%)`. |
-| `#weekplanner_idea=<colour>` | Overrides the `IDEA` chip colour. Default: blue. |
-| `#weekplanner_check=<colour>` | Overrides the `CHECK` chip colour. Default: green. |
-| `#weekplanner_toread=<colour>` | Overrides the `TOREAD` chip colour. Default: purple. |
-| `#scanArchived=false/true` | Archived notes are scanned. Override if they should not - not yet implemented |
+| `#wp_scan_archived=false` | Excludes archived notes from the scan. By default, archived notes are scanned. Accepted false-y values: `false`, `no`, `0`, `off`. |
+| `#wp_backlog_width=<pixels>` | Sets the default width of the Backlog column on desktop. Example: `#wp_backlog_width=320`. Range: 150 to 600. Without this label, the default is 260px. |
+| `#wp_todo=<colour>` | Overrides the `TODO` chip colour. Accepts any CSS colour, such as `#ed7a2a`, `red`, `rgb(120,60,200)`, or `hsl(20 80% 60%)`. Default: orange. |
+| `#wp_idea=<colour>` | Overrides the `IDEA` chip colour. Default: blue. |
+| `#wp_check=<colour>` | Overrides the `CHECK` chip colour. Default: green. |
+| `#wp_toread=<colour>` | Overrides the `TOREAD` chip colour. Default: purple. |
+| `#wp_bg_task=<colour>` | Background colour of task cards. Default: `#e3e3e3`. |
+| `#wp_bg_panel=<colour>` | Background colour of the day and Backlog columns. Default: `#f8f8f8`. |
+| `#wp_color_done_text=<colour>` | Colour applied to the grey-out span around finished `DONE` lines in source notes. Default: `#cfcfcf`. |
+| `#wp_color_done_btn=<colour>` | Colour of the green `✓` mark-done button on cards. Default: `#79a574`. |
+| `#wp_color_date_tag=<colour>` | Colour of the inline `@date` token shown on cards. Default: `#a8a8a8`. |
 
-The user can also set the Backlog width interactively by dragging the right edge of the Backlog column. The dragged value is saved into the `#plannerdata` JSON and takes precedence over `#backlogWidth` until the saved value is cleared.
+The user can also set the Backlog width interactively by dragging the right edge of the Backlog column. The dragged value is saved into the `#plannerdata` JSON and takes precedence over `#wp_backlog_width` until the saved value is cleared.
 
 If something goes wrong and the JSON content becomes corrupted, the [Recovery](#recovery) section explains how to edit or reset it safely.
 
-## Data safety
+### Data safety
 
 The planner does not move task text into the JSON state note. Your tasks remain in their original notes. The `#plannerdata` note stores only scheduling, ordering, backlog width, and filters.
 
 The planner modifies source notes when you mark a task done. It also writes to today's daily note when you use quick capture.
 
-## State persistence
+### State note
 
 The `#plannerdata` note's content is a JSON document storing:
 
@@ -257,9 +284,11 @@ Keys that start with `_` are planner metadata. All other keys are task IDs mappi
 > [!IMPORTANT]
 > Tasks are identified by a hash derived from `noteId`, kind, and the first 48 characters of text. Editing a task's text can invalidate its ID, so its scheduled day is forgotten. If you need to edit a task without losing its day, edit after the first 48 characters where possible. If the task becomes unscheduled, drag the card back to the correct column afterwards. The new ID will be scheduled correctly.
 
-## Recovery
+### Recovery
 
 If the planner will not load, or shows odd behaviour after a Trilium upgrade, the cause is often something in `#plannerdata`. Start with the least destructive fix.
+
+## Trouble shooting
 
 ### Symptom: Initialization error or planner stuck on Loading...
 
@@ -297,13 +326,13 @@ All tasks become unscheduled and return to Backlog. Your backlog width and filte
 
 Check these points:
 
-1.  The setting name is exact, for example `weekplanner_todo`, using lowercase letters and an underscore.
+1.  The label name is exact, for example `wp_todo`, using lowercase letters and underscores. All settings use the `wp_` prefix.
 2.  The value parses as a CSS colour. Try `#ff0000` first. If that works, the original colour string was the problem.
 3.  You reloaded the planner with the `⟳` button, `F5`, or `Shift + Ctrl + R` after changing the setting.
 
 ### Symptom: archived notes appear but you want to exclude them
 
-Archived notes are scanned by default. To exclude them, set `#scanArchived=false` in the settings section of the JSON file and reload the planner.
+Archived notes are scanned by default. To exclude them, add the label `#wp_scan_archived=false` to the `#plannerdata` note and reload the planner.
 
 ### Ultimate option
 

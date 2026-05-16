@@ -34,11 +34,20 @@
  *   3. Paste this code into it
  *   4. In your Render note, set ~renderNote → this JSX note
  *   5. A text note labeled #plannerdata must exist (stores state)
- *      Optional labels:
- *        #backlogWidth=320      default backlog column width (px)
- *        #scanArchived=false    skip archived notes (default: true)
- *        #weekplanner_todo=#ed7a2a   override kind color (also for
- *        #weekplanner_idea, #weekplanner_check, #weekplanner_toread)
+ *      Optional labels (all on the #plannerdata note):
+ *        #wp_backlog_width=320       default backlog column width (px)
+ *        #wp_scan_archived=false     skip archived notes (default: true)
+ *        Kind colors:
+ *          #wp_todo=#ed7a2a          override TODO chip color
+ *          #wp_idea=#348cbb          override IDEA chip color
+ *          #wp_check=#42ae2e         override CHECK chip color
+ *          #wp_toread=#9d4edd        override TOREAD chip color
+ *        Theme (any CSS color string):
+ *          #wp_bg_task=#e3e3e3       task card background
+ *          #wp_bg_panel=#f8f8f8      column / panel background
+ *          #wp_color_done_text=#cfcfcf  grey of marked-done lines in source
+ *          #wp_color_done_btn=#79a574   mark-done ✓ button color
+ *          #wp_color_date_tag=#a8a8a8   inline @date token color
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "trilium:preact";
@@ -58,23 +67,35 @@ const KIND_KEYS = Object.keys(KINDS);
 const KIND_RE_SOURCE = `(?:${KIND_KEYS.join('|')})`;
 
 /* Color overrides come from labels on the #plannerdata note:
-   #weekplanner_todo, #weekplanner_idea, #weekplanner_check, #weekplanner_toread.
+   #wp_todo, #wp_idea, #wp_check, #wp_toread.
    The override map is threaded through props to any component that needs it. */
 function getKindColor(kind, overrides) {
     if (overrides && overrides[kind]) return overrides[kind];
     return KINDS[kind]?.color || '#666';
 }
 
-const COLOR_DONE_TEXT = '#cfcfcf';
-const COLOR_DONE_BTN  = '#79a574';
-const COLOR_DATE_TAG  = '#a8a8a8';
+/* Theme defaults — each can be overridden per install via a label on the
+   #plannerdata note. The label names use the wp_ prefix (e.g. #wp_bg_task). */
+const THEME_DEFAULTS = {
+    bgTask:        '#f3f3f3',  // task card background
+    bgPanel:       '#fafafa',  // column / panel background
+    colorDoneText: '#cfcfcf',  // grey of marked-done lines in source
+    colorDoneBtn:  '#79a574',  // mark-done button color
+    colorDateTag:  '#a8a8a8',  // inline @date token color
+};
 
-const BG_TASK         = '#e3e3e3';
-const BG_PANEL        = '#f8f8f8';
+function resolveTheme(overrides) {
+    return { ...THEME_DEFAULTS, ...(overrides || {}) };
+}
 
 const BACKLOG_WIDTH_DEFAULT = 260;
 const BACKLOG_WIDTH_MIN     = 150;
 const BACKLOG_WIDTH_MAX     = 600;
+
+/* Whether to scan archived notes by default.
+   Overridden per install by adding label #wp_scan_archived=false on the
+   #plannerdata note. Accepted false-y values: false, no, 0, off. */
+const SCAN_ARCHIVED_DEFAULT = true;
 
 const WEEKDAY_ALIASES = {
     mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0,
@@ -142,39 +163,74 @@ function parseTaskMeta(rawText) {
 ══════════════════════════════════════════════════════════════════ */
 
 async function loadPlannerData() {
-    return await runOnBackend(() => {
+    return await runOnBackend((defaultScanArchived) => {
         const note = api.getNoteWithLabel('plannerdata');
-        if (!note) return { data: {}, labelWidth: null, colorOverrides: {}, scanArchived: true };
+        if (!note) {
+            return {
+                data: {},
+                labelWidth: null,
+                colorOverrides: {},
+                themeOverrides: {},
+                scanArchived: defaultScanArchived,
+            };
+        }
 
-        // #backlogWidth label → number of pixels
+        const labelStr = (name) => {
+            const v = note.getLabelValue && note.getLabelValue(name);
+            return (v != null && String(v).trim()) ? String(v).trim() : null;
+        };
+
+        // #wp_backlog_width → number of pixels
         let labelWidth = null;
-        const widthLabel = note.getLabelValue && note.getLabelValue('backlogWidth');
+        const widthLabel = labelStr('wp_backlog_width');
         if (widthLabel) {
             const n = parseInt(widthLabel, 10);
             if (!isNaN(n) && n > 0) labelWidth = n;
         }
 
-        // #scanArchived label → false to skip archived notes, otherwise scan them
-        let scanArchived = true;
-        const scanLabel = note.getLabelValue && note.getLabelValue('scanArchived');
-        if (scanLabel != null && /^(false|no|0|off)$/i.test(String(scanLabel).trim())) {
-            scanArchived = false;
+        // #wp_scan_archived → explicit override of SCAN_ARCHIVED_DEFAULT.
+        //   false/no/0/off  → skip archived notes
+        //   true/yes/1/on   → scan archived notes
+        //   (any other value or missing → fall back to default)
+        let scanArchived = defaultScanArchived;
+        const scanLabel = labelStr('wp_scan_archived');
+        if (scanLabel != null) {
+            const v = scanLabel.toLowerCase();
+            if (/^(false|no|0|off)$/.test(v))      scanArchived = false;
+            else if (/^(true|yes|1|on)$/.test(v))  scanArchived = true;
         }
 
-        // Per-kind color overrides via labels:
-        //   #weekplanner_todo, #weekplanner_idea, #weekplanner_check, #weekplanner_toread
+        // Per-kind color overrides:
+        //   #wp_todo, #wp_idea, #wp_check, #wp_toread
         const kindLabelMap = {
-            TODO:   'weekplanner_todo',
-            IDEA:   'weekplanner_idea',
-            CHECK:  'weekplanner_check',
-            TOREAD: 'weekplanner_toread',
+            TODO:   'wp_todo',
+            IDEA:   'wp_idea',
+            CHECK:  'wp_check',
+            TOREAD: 'wp_toread',
         };
         const colorOverrides = {};
         for (const kind in kindLabelMap) {
-            const val = note.getLabelValue && note.getLabelValue(kindLabelMap[kind]);
-            if (val && typeof val === 'string' && val.trim()) {
-                colorOverrides[kind] = val.trim();
-            }
+            const val = labelStr(kindLabelMap[kind]);
+            if (val) colorOverrides[kind] = val;
+        }
+
+        // Theme overrides — any CSS color string. Missing label → use built-in.
+        //   #wp_bg_task            task card background
+        //   #wp_bg_panel           column / panel background
+        //   #wp_color_done_text    grey of marked-done lines in source
+        //   #wp_color_done_btn     mark-done button color
+        //   #wp_color_date_tag     inline @date token color
+        const themeLabelMap = {
+            bgTask:        'wp_bg_task',
+            bgPanel:       'wp_bg_panel',
+            colorDoneText: 'wp_color_done_text',
+            colorDoneBtn:  'wp_color_done_btn',
+            colorDateTag:  'wp_color_date_tag',
+        };
+        const themeOverrides = {};
+        for (const key in themeLabelMap) {
+            const val = labelStr(themeLabelMap[key]);
+            if (val) themeOverrides[key] = val;
         }
 
         // Note content holds the JSON planner state
@@ -184,8 +240,8 @@ async function loadPlannerData() {
             if (raw) data = JSON.parse(raw);
         } catch (_) { /* corrupt JSON → start fresh */ }
 
-        return { data, labelWidth, colorOverrides, scanArchived };
-    });
+        return { data, labelWidth, colorOverrides, themeOverrides, scanArchived };
+    }, [SCAN_ARCHIVED_DEFAULT]);
 }
 
 async function savePlannerData(plannerData) {
@@ -213,7 +269,7 @@ function buildPrefixGlobClause() {
    If `scanArchived` is false, notes that Trilium considers archived
    (either via a direct #archived label or one inherited from an ancestor)
    are skipped. */
-async function fetchAllTasks({ scanArchived = true } = {}) {
+async function fetchAllTasks({ scanArchived = SCAN_ARCHIVED_DEFAULT } = {}) {
     const kindRe = KIND_RE_SOURCE;
     const prefixClause = buildPrefixGlobClause();
 
@@ -289,7 +345,7 @@ async function fetchAllTasks({ scanArchived = true } = {}) {
 /* Re-scan a single note. Returns a (possibly empty) array of tasks
    in the same shape as fetchAllTasks. Used after mark-done and capture
    to avoid a full database scan when we know which note changed. */
-async function fetchTasksForNote(noteId, { scanArchived = true } = {}) {
+async function fetchTasksForNote(noteId, { scanArchived = SCAN_ARCHIVED_DEFAULT } = {}) {
     const kindRe = KIND_RE_SOURCE;
 
     const groups = await runOnBackend((kindReSource, includeArchived, targetNoteId) => {
@@ -359,7 +415,7 @@ function flattenGroups(groups) {
 /* Mark done: wrap the line in a grey span and replace prefix with DONE.
    Replaces the Nth occurrence of `<kind> <body>` (up to a line/block boundary)
    with `<span style="color:#cfcfcf">DONE <body></span>`. */
-async function markTaskDone(task) {
+async function markTaskDone(task, doneTextColor) {
     await runOnBackend((noteId, kind, indexForKind, doneColor) => {
         const note = api.getNote(noteId);
         if (!note) return;
@@ -378,7 +434,7 @@ async function markTaskDone(task) {
             return match;
         });
         note.setContent(content);
-    }, [task.noteId, task.kind, task.indexForKind, COLOR_DONE_TEXT]);
+    }, [task.noteId, task.kind, task.indexForKind, doneTextColor]);
 }
 
 /* Append a new task to today's daily note.
@@ -497,7 +553,11 @@ function withOrderUpdate(plannerData, col, taskId, insertBeforeId, allTasks) {
    CSS — light theme, kind colors
 ══════════════════════════════════════════════════════════════════ */
 
-const STYLE = `
+/* Builds the planner's CSS for a given resolved theme.
+   Called once at startup with the resolved theme, then re-called only
+   when label-based overrides change (rare; mostly never within a session). */
+function buildStyle(theme) {
+    return `
 .pl-root { display:flex; flex-direction:column; height:100%; overflow:hidden;
            font-family: var(--detail-font-family,"Segoe UI",sans-serif);
            font-size:14px; color:#333; background:#fff; }
@@ -512,7 +572,7 @@ const STYLE = `
 
 .pl-col { flex-shrink:0; display:flex; flex-direction:column; border-radius:8px;
           border:1px solid #d0d0d0;
-          background:${BG_PANEL};
+          background:${theme.bgPanel};
           max-height:calc(100vh - 240px); position:relative; }
 .pl-col.today { border-color:#89b4fa; border-width:2px; }
 
@@ -525,7 +585,7 @@ const STYLE = `
 
 .pl-tasks { padding:8px; display:flex; flex-direction:column; gap:6px;
             overflow-y:auto; flex:1; min-height:64px; }
-.pl-task { background:${BG_TASK}; border-radius:5px;
+.pl-task { background:${theme.bgTask}; border-radius:5px;
            padding:7px 10px; font-size:15px; line-height:1.4; cursor:pointer;
            border:1.5px solid transparent; transition:border-color .1s, opacity .15s;
            user-select:none; color:#222; }
@@ -540,7 +600,7 @@ const STYLE = `
 .pl-task-tag { display:inline-block; font-size:11px; padding:0 4px;
                border-radius:3px; margin-left:4px; vertical-align:middle;
                background:#d8d8d8; color:#555; }
-.pl-task-date { color:${COLOR_DATE_TAG}; }
+.pl-task-date { color:${theme.colorDateTag}; }
 
 .pl-drop { display:none; height:40px; border:2px dashed #b8b8b8;
            border-radius:5px; opacity:.5; }
@@ -607,7 +667,7 @@ body.pl-resizing * { cursor:col-resize !important; }
 }
 .pl-task:hover .pl-task-done-btn { opacity:1; }
 .pl-task-done-btn:hover {
-    background:${COLOR_DONE_BTN}; border-color:${COLOR_DONE_BTN}; color:#fff;
+    background:${theme.colorDoneBtn}; border-color:${theme.colorDoneBtn}; color:#fff;
 }
 .pl-task-done-btn.working { opacity:1; background:#eee; cursor:wait; }
 /* Always visible on touch devices (no hover) */
@@ -615,13 +675,19 @@ body.pl-resizing * { cursor:col-resize !important; }
     .pl-task-done-btn { opacity:.7; }
 }
 `;
+}
 
-function injectStyleOnce() {
-    if (document.getElementById('pl-preact-styles')) return;
-    const el = document.createElement('style');
-    el.id = 'pl-preact-styles';
-    el.textContent = STYLE;
-    document.head.appendChild(el);
+/* Inject the planner CSS into the page <head>. Called when the theme is
+   first known, and again whenever it changes. Replaces the existing
+   <style> tag's content rather than appending a new one. */
+function injectStyle(css) {
+    let el = document.getElementById('pl-preact-styles');
+    if (!el) {
+        el = document.createElement('style');
+        el.id = 'pl-preact-styles';
+        document.head.appendChild(el);
+    }
+    if (el.textContent !== css) el.textContent = css;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -908,7 +974,8 @@ function PlannerApp() {
     const [error,       setError]         = useState(null);
     const [capturing,   setCapturing]     = useState(false);
     const [colorOverrides, setColorOverrides] = useState({});
-    const [scanArchived, setScanArchived] = useState(true);
+    const [themeOverrides, setThemeOverrides] = useState({});
+    const [scanArchived, setScanArchived] = useState(SCAN_ARCHIVED_DEFAULT);
 
     // Filters: persisted in plannerData._filters as { kinds: [], tags: [] }
     const [filters, setFilters] = useState({ kinds: new Set(), tags: new Set() });
@@ -917,7 +984,13 @@ function PlannerApp() {
     const [insertMarker, setInsertMarker] = useState({ col: null, beforeId: null });
     const [isResizing,   setIsResizing]   = useState(false);
 
-    useEffect(() => { injectStyleOnce(); }, []);
+    // Resolved theme: defaults merged with label-based overrides.
+    // Memoised so a stable reference is passed to children and the CSS
+    // injection effect doesn't re-run on every render.
+    const theme = useMemo(() => resolveTheme(themeOverrides), [themeOverrides]);
+
+    // Inject CSS whenever the resolved theme changes (and once on mount).
+    useEffect(() => { injectStyle(buildStyle(theme)); }, [theme]);
 
     /* Schedule a fetched task per its @date suffix if not already planned.
        Returns updated plannerData or the same reference if no changes. */
@@ -957,6 +1030,7 @@ function PlannerApp() {
                     setBacklogWidth(loaded.labelWidth);
                 }
                 if (loaded.colorOverrides) setColorOverrides(loaded.colorOverrides);
+                if (loaded.themeOverrides) setThemeOverrides(loaded.themeOverrides);
                 setScanArchived(loaded.scanArchived !== false);
 
                 // Fetch tasks, apply @date auto-scheduling, then set both at once
@@ -1043,7 +1117,7 @@ function PlannerApp() {
         });
 
         try {
-            await markTaskDone(task);
+            await markTaskDone(task, theme.colorDoneText);
             // Re-scan only the source note to refresh its task indices.
             await reloadNote(task.noteId);
         } catch (err) {
@@ -1051,7 +1125,7 @@ function PlannerApp() {
             alert(`Mark done failed: ${err.message || err}`);
             await reload();
         }
-    }, [reload, reloadNote]);
+    }, [reload, reloadNote, theme]);
 
     const capture = useCallback(async (rawText) => {
         setCapturing(true);
