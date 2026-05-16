@@ -43,11 +43,12 @@
  *          #wp_check=#42ae2e         override CHECK chip color
  *          #wp_toread=#9d4edd        override TOREAD chip color
  *        Theme (any CSS color string):
- *          #wp_bg_task=#e3e3e3       task card background
- *          #wp_bg_panel=#f8f8f8      column / panel background
+ *          #wp_bg_task=#f3f3f3          task card background
+ *          #wp_bg_panel=#fafafa         column / panel background
  *          #wp_color_done_text=#cfcfcf  grey of marked-done lines in source
  *          #wp_color_done_btn=#79a574   mark-done ✓ button color
  *          #wp_color_date_tag=#a8a8a8   inline @date token color
+ *          #wp_color_progress=#79a574   progress-bar fill
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "trilium:preact";
@@ -77,11 +78,12 @@ function getKindColor(kind, overrides) {
 /* Theme defaults — each can be overridden per install via a label on the
    #plannerdata note. The label names use the wp_ prefix (e.g. #wp_bg_task). */
 const THEME_DEFAULTS = {
-    bgTask:        '#f3f3f3',  // task card background
-    bgPanel:       '#fafafa',  // column / panel background
-    colorDoneText: '#cfcfcf',  // grey of marked-done lines in source
-    colorDoneBtn:  '#79a574',  // mark-done button color
-    colorDateTag:  '#a8a8a8',  // inline @date token color
+    bgTask:         '#f3f3f3',  // task card background
+    bgPanel:        '#fafafa',  // column / panel background
+    colorDoneText:  '#cfcfcf',  // grey of marked-done lines in source
+    colorDoneBtn:   '#79a574',  // mark-done button color
+    colorDateTag:   '#a8a8a8',  // inline @date token color
+    colorProgress:  '#79a574',  // progress-bar fill (matches done button by default)
 };
 
 function resolveTheme(overrides) {
@@ -220,12 +222,14 @@ async function loadPlannerData() {
         //   #wp_color_done_text    grey of marked-done lines in source
         //   #wp_color_done_btn     mark-done button color
         //   #wp_color_date_tag     inline @date token color
+        //   #wp_color_progress     progress-bar fill
         const themeLabelMap = {
-            bgTask:        'wp_bg_task',
-            bgPanel:       'wp_bg_panel',
-            colorDoneText: 'wp_color_done_text',
-            colorDoneBtn:  'wp_color_done_btn',
-            colorDateTag:  'wp_color_date_tag',
+            bgTask:         'wp_bg_task',
+            bgPanel:        'wp_bg_panel',
+            colorDoneText:  'wp_color_done_text',
+            colorDoneBtn:   'wp_color_done_btn',
+            colorDateTag:   'wp_color_date_tag',
+            colorProgress:  'wp_color_progress',
         };
         const themeOverrides = {};
         for (const key in themeLabelMap) {
@@ -597,9 +601,6 @@ function buildStyle(theme) {
 .pl-task-kind { display:inline-block; font-size:10px; font-weight:700;
                 padding:1px 5px; border-radius:3px; margin-right:5px;
                 vertical-align:middle; letter-spacing:.05em; color:#fff; }
-.pl-task-tag { display:inline-block; font-size:11px; padding:0 4px;
-               border-radius:3px; margin-left:4px; vertical-align:middle;
-               background:#d8d8d8; color:#555; }
 .pl-task-date { color:${theme.colorDateTag}; }
 
 .pl-drop { display:none; height:40px; border:2px dashed #b8b8b8;
@@ -674,6 +675,33 @@ body.pl-resizing * { cursor:col-resize !important; }
 @media (hover: none) {
     .pl-task-done-btn { opacity:.7; }
 }
+
+/* Progress bar at the bottom edge of the task card.
+   Click on the bar cycles 0 → 25 → 50 → 75 → 100 → 0.
+   Reaching 100 calls markDone via the cycle handler. */
+.pl-task-progress {
+    position:absolute; left:0; right:0; bottom:0;
+    height:5px; border-radius:0 0 5px 5px;
+    background:rgba(0,0,0,.06);
+    cursor:pointer; overflow:hidden;
+}
+.pl-task-progress-fill {
+    height:100%;
+    background:${theme.colorProgress};
+    opacity:.55;
+    transition:width .15s, opacity .15s;
+}
+.pl-task-progress:hover .pl-task-progress-fill { opacity:.85; }
+.pl-task-progress-label {
+    position:absolute; right:6px; top:-15px;
+    font-size:10px; color:#666;
+    background:#fff; padding:0 4px; border-radius:3px;
+    pointer-events:none; opacity:0;
+    transition:opacity .15s;
+}
+.pl-task-progress:hover .pl-task-progress-label { opacity:1; }
+/* Add bottom padding so card content doesn't sit under the bar */
+.pl-task { padding-bottom:9px; }
 `;
 }
 
@@ -705,20 +733,20 @@ function KindChip({ kind, overrides }) {
     );
 }
 
-/* Render task text inline, with @tokens styled as light-grey spans.
-   Splits the text on @token matches (any non-space run after @ that is
-   preceded by start-of-text or whitespace) and emits a span per match. */
+/* Render task text inline, with @tokens and #tags styled as light-grey spans.
+   Walks the text once and emits a styled span per match of either pattern.
+   Both use the same .pl-task-date CSS rule so they share the muted look. */
 function renderTaskText(text) {
     const parts = [];
-    const re = /(^|\s)@(\S+)/g;
+    // Match @word or #word at start-of-text or after whitespace.
+    // \S+ for @date; [A-Za-z][\w-]* for #tag (matches the parseTaskMeta rule).
+    const re = /(^|\s)(@\S+|#[A-Za-z][\w-]*)/g;
     let last = 0;
     let m;
     while ((m = re.exec(text)) !== null) {
-        // Emit any text before the match (including the leading space/start)
-        const tokenStart = m.index + m[1].length;       // position of the '@'
+        const tokenStart = m.index + m[1].length;
         if (tokenStart > last) parts.push(text.slice(last, tokenStart));
-        // Emit the @token as a styled span
-        const token = '@' + m[2];
+        const token = m[2];
         parts.push(
             <span class="pl-task-date" key={`${tokenStart}-${token}`}>{token}</span>
         );
@@ -728,16 +756,29 @@ function renderTaskText(text) {
     return parts;
 }
 
-function TaskCard({ task, overrides, draggable, onClick, onMarkDone, onDragStart, onDragEnd }) {
+function TaskCard({ task, progress, overrides, draggable, onClick, onMarkDone, onSetProgress, onDragStart, onDragEnd }) {
     const [working, setWorking] = useState(false);
 
     const handleDone = async (e) => {
-        e.stopPropagation();   // don't trigger card click
+        e.stopPropagation();
         if (working) return;
         setWorking(true);
         try { await onMarkDone(task); }
         catch (err) { console.error(err); setWorking(false); }
     };
+
+    // Progress click: cycle 0 → 25 → 50 → 75 → 100 → 0.
+    // Progress click cycles 0 → 25 → 50 → 75 → 0.
+    // The bar deliberately does NOT reach 100 — completion is the ✓ button's job,
+    // so a misclick on the bar can't accidentally mark a task done.
+    const handleProgressClick = (e) => {
+        e.stopPropagation();
+        const current = progress || 0;
+        const next = current >= 75 ? 0 : current + 25;
+        onSetProgress(task, next);
+    };
+
+    const pct = Math.max(0, Math.min(75, progress || 0));
 
     return (
         <div
@@ -745,7 +786,7 @@ function TaskCard({ task, overrides, draggable, onClick, onMarkDone, onDragStart
             draggable={draggable}
             data-task-id={task.id}
             onClick={onClick}
-            onAuxClick={onClick}   /* middle-click fires here in most browsers */
+            onAuxClick={onClick}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
         >
@@ -753,7 +794,6 @@ function TaskCard({ task, overrides, draggable, onClick, onMarkDone, onDragStart
                 class={`pl-task-done-btn${working ? ' working' : ''}`}
                 title="Mark done"
                 onClick={handleDone}
-                /* stop drag from starting on the button itself */
                 draggable={false}
                 onMouseDown={(e) => e.stopPropagation()}
             >
@@ -762,18 +802,24 @@ function TaskCard({ task, overrides, draggable, onClick, onMarkDone, onDragStart
             <div style={{ paddingRight: '20px' }}>
                 <KindChip kind={task.kind} overrides={overrides} />
                 {renderTaskText(task.text)}
-                {task.tags.map(tag => (
-                    <span class="pl-task-tag" key={tag}>#{tag}</span>
-                ))}
             </div>
             <div class="pl-task-note">{task.noteTitle}</div>
+            <div
+                class="pl-task-progress"
+                title={`Progress: ${pct}% — click to advance`}
+                onClick={handleProgressClick}
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div class="pl-task-progress-fill" style={{ width: `${pct}%` }} />
+                {pct > 0 && <span class="pl-task-progress-label">{pct}%</span>}
+            </div>
         </div>
     );
 }
 
 function Column({
-    col, tasks, mobile, isResizing, widthStyle, overrides,
-    onCardClick, onCardMarkDone, onCardDragStart, onCardDragEnd,
+    col, tasks, mobile, isResizing, widthStyle, overrides, progressMap,
+    onCardClick, onCardMarkDone, onCardSetProgress, onCardDragStart, onCardDragEnd,
     onDragOver, onDragLeave, onDrop,
     onResizeStart, insertMarkerBeforeId,
 }) {
@@ -804,10 +850,12 @@ function Column({
                         <TaskCard
                             key={t.id}
                             task={t}
+                            progress={progressMap ? progressMap[t.id] : 0}
                             overrides={overrides}
                             draggable={!mobile}
                             onClick={(e) => onCardClick(t, e)}
                             onMarkDone={onCardMarkDone}
+                            onSetProgress={onCardSetProgress}
                             onDragStart={(e) => onCardDragStart(t, e)}
                             onDragEnd={onCardDragEnd}
                         />
@@ -1113,6 +1161,11 @@ function PlannerApp() {
                     [oldDay]: next._order[oldDay].filter(id => id !== task.id),
                 };
             }
+            if (next._progress && task.id in next._progress) {
+                const nextProgress = { ...next._progress };
+                delete nextProgress[task.id];
+                next._progress = nextProgress;
+            }
             return next;
         });
 
@@ -1144,6 +1197,20 @@ function PlannerApp() {
             setCapturing(false);
         }
     }, [reload, reloadNote]);
+
+    /* Set a task's progress (0/25/50/75). 100 is handled separately via markDone.
+       Stored in plannerData._progress under the task ID. Setting 0 removes the
+       key to keep the map clean. */
+    const setProgress = useCallback((task, value) => {
+        const v = Math.max(0, Math.min(75, Math.round(value)));
+        setPlannerData(prev => {
+            const cur = prev._progress || {};
+            const nextProgress = { ...cur };
+            if (v === 0) delete nextProgress[task.id];
+            else nextProgress[task.id] = v;
+            return { ...prev, _progress: nextProgress };
+        });
+    }, []);
 
     /* Drag */
     const onCardDragStart = useCallback((task, e) => {
@@ -1375,9 +1442,11 @@ function PlannerApp() {
                             isResizing={col.isBacklog && isResizing}
                             widthStyle={widthStyle}
                             overrides={colorOverrides}
+                            progressMap={plannerData._progress}
                             insertMarkerBeforeId={marker}
                             onCardClick={onCardClick}
                             onCardMarkDone={markDone}
+                            onCardSetProgress={setProgress}
                             onCardDragStart={onCardDragStart}
                             onCardDragEnd={onCardDragEnd}
                             onDragOver={(e) => onZoneDragOver(col.key, e)}
