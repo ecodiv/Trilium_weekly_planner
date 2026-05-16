@@ -70,7 +70,8 @@ To set up the weekly planner, download `WeeklyPlanner.zip` and import it into Tr
 1.  `planner.jsx`, the code that runs the planner
 2.  `planner_data.json`, the state note
 
-For better organisation, you may want to import everything inside a parent note such as `Tools`, `Plugins`, or `Addons`.
+> [!TIP]
+> For better organisation, you may want to import everything inside a parent note such as `Tools`, `Plugins`, or `Addons`.
 
 After importing:
 
@@ -122,7 +123,8 @@ Prefixes are case-sensitive and must be followed by a space. They must appear at
 
 Archived notes are included in the scan by default. To exclude archived notes, add the label `#wp_scan_archived=false` to the `#plannerdata` note.
 
-> [!WARNING] A task's planned day is linked to its generated task ID. Editing the first 48 characters of a task can make the planner treat it as a new task, so the planned day may be lost.
+> [!WARNING]
+> A task's planned day is linked to its generated task ID. Editing the first 48 characters of a task can make the planner treat it as a new task, so the planned day may be lost.
 
 ### The day card
 
@@ -134,7 +136,8 @@ _Figure 2: Task cards with ✓ button visible on hover, kind chip, date suffix a
 
 The `✓` button in the top-right corner is the mark-done action. On desktop it appears on hover. On touch devices it is always visible. Clicking it removes the task from the planner. The line stays in your source note, greyed out, as a record of completion. You can also set progress, see below.
 
-> [!NOTE] Done items are not cleaned up automatically. Delete them manually when you want a tidy source note.
+> [!NOTE]
+> Done items are not cleaned up automatically. Delete them manually when you want a tidy source note.
 
 Clicking anywhere else on the card opens the source note. The default action opens it in a **side panel** alongside your current view. To open the source note as a new tab, use `Ctrl-click`, `Cmd-click` or `middle-click`.
 
