@@ -635,12 +635,15 @@ body.pl-resizing * { cursor:col-resize !important; }
                     font-family:inherit; }
 .pl-capture input:focus { outline:1px solid #89b4fa; }
 
-/* Filter dropdown */
+/* Filter dropdown. Uses position:fixed so it escapes any clipping ancestor
+   (the planner root has overflow:hidden, which would otherwise crop it).
+   Position is set at open time from the trigger button's bounding rect. */
 .pl-filter-wrap { position:relative; }
-.pl-filter-panel { position:absolute; top:30px; right:0; z-index:50;
+.pl-filter-panel { position:fixed; z-index:9998;
                    background:#fff; border:1px solid #c8c8c8; border-radius:6px;
                    box-shadow:0 4px 12px rgba(0,0,0,.12);
-                   padding:10px 12px; min-width:200px; }
+                   padding:10px 12px; min-width:200px;
+                   max-height:80vh; overflow-y:auto; }
 .pl-filter-panel h5 { margin:0 0 4px; font-size:12px;
                       text-transform:uppercase; letter-spacing:.05em;
                       color:#666; font-weight:700; }
